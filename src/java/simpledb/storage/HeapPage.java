@@ -73,8 +73,7 @@ public class HeapPage implements Page {
     */
     private int getNumTuples() {        
         // some code goes here
-        return 0;
-
+         return (BufferPool.getPageSize() * 8) / (td.getSize() * 8 + 1);
     }
 
     /**
@@ -84,8 +83,7 @@ public class HeapPage implements Page {
     private int getHeaderSize() {        
         
         // some code goes here
-        return 0;
-                 
+        return ((getNumTuples() + (8 - 1)) / 8);
     }
     
     /** Return a view of this page before it was modified
@@ -118,7 +116,7 @@ public class HeapPage implements Page {
      */
     public HeapPageId getId() {
     // some code goes here
-    throw new UnsupportedOperationException("implement this");
+        return pid;
     }
 
     /**
@@ -288,7 +286,15 @@ public class HeapPage implements Page {
      */
     public int getNumEmptySlots() {
         // some code goes here
-        return 0;
+        int cnt = 0;
+        for (int i = 0; i < getHeaderSize(); i++) {
+            for (int j = 0; j < 8; j++) {
+                if (((header[i] >> j) & 1) == 0) {
+                    ++cnt;
+                }
+            }
+        }
+        return cnt;
     }
 
     /**
@@ -296,7 +302,9 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        return false;
+        int byteNo = i / 8;
+        int bitNo = i % 8;
+        return ((header[byteNo] >> bitNo) & 1) == 1;
     }
 
     /**
@@ -313,7 +321,27 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         // some code goes here
-        return null;
+        return new Iterator<Tuple>() {
+            private int pos = 0;
+
+            @Override
+            public boolean hasNext() {
+                for (; pos < getNumTuples(); pos++) {
+                    if (isSlotUsed(pos)) return true;
+                }
+                return false;
+            }
+
+            @Override
+            public void remove() {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public Tuple next() {
+                return tuples[pos++];
+            }
+        };
     }
 
 }
