@@ -27,7 +27,7 @@ public class Tuple implements Serializable {
     public Tuple(TupleDesc td) {
         // some code goes here
         this.tupleDesc = td;
-        this.fields = new Field[td.getSize()];
+        this.fields = new Field[td.numFields()];
     }
 
     /**
