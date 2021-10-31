@@ -35,6 +35,7 @@ public class HeapFileWriteTest extends TestUtil.CreateHeapFile {
     @Test public void addTuple() throws Exception {
         // we should be able to add 504 tuples on an empty page.
         for (int i = 0; i < 504; ++i) {
+            // TODO(JACK ZHANG): 2021/10/31 the tuple's pageId do not match to dbfile, is it a bug?
             empty.insertTuple(tid, Utility.getHeapTuple(i, 2));
             assertEquals(1, empty.numPages());
         }

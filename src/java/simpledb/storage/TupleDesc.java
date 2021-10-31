@@ -102,7 +102,7 @@ public class TupleDesc implements Serializable {
     }
 
     public TupleDesc(TDItem[] tdItems) {
-        this.setTdItems(tdItems);
+        this.tdItems = tdItems;
     }
 
     /**
@@ -250,7 +250,4 @@ public class TupleDesc implements Serializable {
         return tdItems;
     }
 
-    public void setTdItems(TDItem[] tdItems) {
-        this.tdItems = tdItems;
-    }
 }

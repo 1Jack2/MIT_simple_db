@@ -11,7 +11,6 @@ import java.util.*;
  * The Join operator implements the relational join operation.
  */
 public class Join extends Operator {
-
     private static final long serialVersionUID = 1L;
 
     private JoinPredicate joinPredicate;

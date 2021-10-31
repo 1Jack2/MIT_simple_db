@@ -44,6 +44,14 @@ public class RecordId implements Serializable {
         return pid;
     }
 
+    public void setPid(PageId pid) {
+        this.pid = pid;
+    }
+
+    public void setTupleNo(int tupleNo) {
+        this.tupleNo = tupleNo;
+    }
+
     /**
      * Two RecordId objects are considered equal if they represent the same
      * tuple.
@@ -71,4 +79,11 @@ public class RecordId implements Serializable {
         return Objects.hash(pid, tupleNo);
     }
 
+    @Override
+    public String toString() {
+        return "RecordId{" +
+                "pid=" + pid +
+                ", tupleNo=" + tupleNo +
+                '}';
+    }
 }

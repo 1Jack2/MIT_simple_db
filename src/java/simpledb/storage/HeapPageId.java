@@ -36,6 +36,14 @@ public class HeapPageId implements PageId {
         return pageNo;
     }
 
+    public void setTableId(int tableId) {
+        this.tableId = tableId;
+    }
+
+    public void setPageNo(int pageNo) {
+        this.pageNo = pageNo;
+    }
+
     /**
      * @return a hash code for this page, represented by a combination of
      *   the table number and the page number (needed if a PageId is used as a
@@ -77,4 +85,11 @@ public class HeapPageId implements PageId {
         return data;
     }
 
+    @Override
+    public String toString() {
+        return "HeapPageId{" +
+                "tableId=" + tableId +
+                ", pageNo=" + pageNo +
+                '}';
+    }
 }
