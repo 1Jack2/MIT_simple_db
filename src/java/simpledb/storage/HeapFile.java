@@ -1,7 +1,5 @@
 package simpledb.storage;
 
-import com.sun.org.slf4j.internal.Logger;
-import com.sun.org.slf4j.internal.LoggerFactory;
 import simpledb.common.Database;
 import simpledb.common.DbException;
 import simpledb.common.Permissions;
@@ -31,7 +29,6 @@ import java.util.NoSuchElementException;
  */
 public class HeapFile implements DbFile {
 
-    Logger log = LoggerFactory.getLogger(HeapFile.class);
     private File file;
     private TupleDesc td;
 
@@ -101,14 +98,14 @@ public class HeapFile implements DbFile {
             HeapPageId id = new HeapPageId(pid.getTableId(),pid.getPageNumber());
             return new HeapPage(id, bytes);
         }catch (IOException e){
-            log.error("", e);
+            e.printStackTrace();
         }finally {
             try{
                 if (f != null) {
                     f.close();
                 }
             }catch (Exception e){
-                log.error("", e);
+                e.printStackTrace();
             }
         }
         throw new IllegalArgumentException(String.format("table %d page %d is invalid", tableId, pgNo));

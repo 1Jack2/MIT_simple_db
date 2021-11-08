@@ -1,13 +1,11 @@
 package simpledb.optimizer;
 
 import simpledb.common.Database;
-import simpledb.common.Type;
+import simpledb.common.DbException;
 import simpledb.execution.Predicate;
-import simpledb.execution.SeqScan;
 import simpledb.storage.*;
-import simpledb.transaction.Transaction;
+import simpledb.transaction.TransactionAbortedException;
 
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -68,6 +66,11 @@ public class TableStats {
      */
     static final int NUM_HIST_BINS = 100;
 
+    private int totalTuples = 0;
+    private Object[] histograms;
+    private int ioCostPerPage;
+    private int tableId;
+
     /**
      * Create a new TableStats object, that keeps track of statistics on each
      * column of a table
@@ -87,6 +90,70 @@ public class TableStats {
         // necessarily have to (for example) do everything
         // in a single scan of the table.
         // some code goes here
+        this.tableId = tableid;
+        this.ioCostPerPage = ioCostPerPage;
+        TupleDesc td = Database.getCatalog().getTupleDesc(tableid);
+        histograms = new Object[td.getSize()];
+
+        // Build min values and max values
+        Field[] mins = new Field[td.getTdItems().length];
+        Field[] maxs = new Field[td.getTdItems().length];
+        DbFileIterator iterator = Database.getCatalog().getDatabaseFile(tableid).iterator(null);
+        try {
+            iterator.open();
+            while (iterator.hasNext()) {
+                totalTuples++;
+                Tuple tuple = iterator.next();
+                for (int i = 0; i < td.getTdItems().length; i++) {
+                    if (maxs[i] == null || tuple.getField(i).compare(Predicate.Op.GREATER_THAN, maxs[i])) {
+                        maxs[i] = tuple.getField(i);
+                    }
+                    if (mins[i] == null || tuple.getField(i).compare(Predicate.Op.LESS_THAN, mins[i])) {
+                        mins[i] = tuple.getField(i);
+                    }
+                }
+            }
+        } catch (DbException | TransactionAbortedException e) {
+            e.printStackTrace();
+        }
+
+        // Build histograms
+        for (int i = 0; i < td.getTdItems().length; i++) {
+            switch (td.getFieldType(i)) {
+                case INT_TYPE:
+                    histograms[i] = new IntHistogram(NUM_HIST_BINS,
+                            ((IntField) mins[i]).getValue(), ((IntField) maxs[i]).getValue());
+                    break;
+                case STRING_TYPE:
+                    histograms[i] = new StringHistogram(NUM_HIST_BINS);
+                    break;
+                default:
+                    throw new IllegalStateException("Impossible to reach here");
+            }
+        }
+
+        // init histograms
+        try {
+            iterator.rewind();
+            while (iterator.hasNext()) {
+                Tuple tuple = iterator.next();
+                for (int i = 0; i < td.getTdItems().length; i++) {
+                    switch (tuple.getField(i).getType()) {
+                        case INT_TYPE:
+                            ((IntHistogram) histograms[i]).addValue(((IntField) tuple.getField(i)).getValue());
+                            break;
+                        case STRING_TYPE:
+                            ((StringHistogram) histograms[i]).addValue(((StringField) tuple.getField(i)).getValue());
+                            break;
+                        default:
+                            throw new IllegalStateException("Impossible to reach here");
+                    }
+                }
+            }
+        } catch (DbException | TransactionAbortedException e) {
+            e.printStackTrace();
+        }
+
     }
 
     /**
@@ -102,8 +169,7 @@ public class TableStats {
      * @return The estimated cost of scanning the table.
      */
     public double estimateScanCost() {
-        // some code goes here
-        return 0;
+        return getIoCostPerPage() * totalTuples() / BufferPool.getPageSize();
     }
 
     /**
@@ -116,8 +182,7 @@ public class TableStats {
      *         selectivityFactor
      */
     public int estimateTableCardinality(double selectivityFactor) {
-        // some code goes here
-        return 0;
+        return ((int) (totalTuples() * selectivityFactor));
     }
 
     /**
@@ -149,16 +214,36 @@ public class TableStats {
      *         predicate
      */
     public double estimateSelectivity(int field, Predicate.Op op, Field constant) {
-        // some code goes here
-        return 1.0;
+        double result;
+        switch (constant.getType()) {
+            case INT_TYPE:
+                result = ((IntHistogram) getHistograms()[field]).estimateSelectivity(op, ((IntField) constant).getValue());
+                break;
+            case STRING_TYPE:
+                result = ((StringHistogram) getHistograms()[field]).estimateSelectivity(op, ((StringField) constant).getValue());
+                break;
+            default:
+                throw new IllegalStateException("Impossible to reach here");
+        }
+        return result;
     }
 
     /**
      * return the total number of tuples in this table
      * */
     public int totalTuples() {
-        // some code goes here
-        return 0;
+        return totalTuples;
     }
 
+    public Object[] getHistograms() {
+        return histograms;
+    }
+
+    public int getIoCostPerPage() {
+        return ioCostPerPage;
+    }
+
+    public int getTableId() {
+        return tableId;
+    }
 }

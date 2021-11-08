@@ -2,10 +2,17 @@ package simpledb.optimizer;
 
 import simpledb.execution.Predicate;
 
+import java.util.Arrays;
+
 /** A class to represent a fixed-width histogram over a single integer-based field.
  */
 public class IntHistogram {
 
+    private final int[] buckets;
+    private final int maxValue;
+    private final int minValue;
+    private final int width;
+    private int totalTuples = 0;
     /**
      * Create a new IntHistogram.
      * 
@@ -23,7 +30,10 @@ public class IntHistogram {
      * @param max The maximum integer value that will ever be passed to this class for histogramming
      */
     public IntHistogram(int buckets, int min, int max) {
-    	// some code goes here
+        this.minValue = min;
+        this.maxValue = max;
+        this.buckets = new int[buckets];
+        this.width = ((max - min + 1) + (buckets - 1)) / buckets;
     }
 
     /**
@@ -31,7 +41,75 @@ public class IntHistogram {
      * @param v Value to add to the histogram
      */
     public void addValue(int v) {
-    	// some code goes here
+    	if (isIllegal(v)) {
+            throw new IllegalArgumentException(String.format("%d is out of legal range [%d, %d]",
+                    v, getMinValue(), getMaxValue()));
+        }
+        IncreaseBucketHeight(v);
+        IncreaseTotalTuples();
+    }
+
+    private boolean isIllegal(int v) {
+        return tooLarge(v) || tooSmall(v);
+    }
+
+    private boolean tooLarge(int v) {
+        return v > getMaxValue();
+    }
+
+    private boolean tooSmall(int v) {
+        return v < getMinValue();
+    }
+
+    /**
+     *
+     * @param v Value to add to the histogram or to compare with
+     * @return The height of the {@code v}'s corresponding bucket
+     */
+    private int getBucketHeight(int v) {
+        return buckets[getBucketIndex(v)];
+    }
+
+    /**
+     *
+     * @param v Value to add to the histogram or to compare with
+     * @return The index of the {@code v}'s corresponding bucket
+     */
+    private int getBucketIndex(int v) {
+        return (v - getMinValue()) / getWidth();
+    }
+
+    /**
+     *
+     * @param v Value to add to the histogram or to compare with
+     * @return The right border of the {@code v}'s corresponding bucket
+     */
+    private int getRightBorder(int v) {
+        return (getMinValue() + getWidth()) + getBucketIndex(v) * getWidth();
+    }
+
+    /**
+     *
+     * @param v Value to add to the histogram or to compare with
+     * @return The right border of the {@code v}'s corresponding bucket
+     */
+    private int getLeftBorder(int v) {
+        return getMinValue() + getBucketIndex(v) * getWidth();
+    }
+
+    /**
+     *
+     * @param v Value to add to the histogram or to compare with
+     */
+    private void setBucketHeight(int v, int value) {
+        buckets[(getBucketIndex(v))] = value;
+    }
+
+    /**
+     * @param v Value to add to the histogram or to compare with
+     */
+    private void IncreaseBucketHeight(int v) {
+        setBucketHeight(v, getBucketHeight(v) + 1);
     }
 
     /**
@@ -45,9 +123,82 @@ public class IntHistogram {
      * @return Predicted selectivity of this particular operator and value
      */
     public double estimateSelectivity(Predicate.Op op, int v) {
+        double result;
+        switch (op) {
+            case EQUALS:
+                if (isIllegal(v)) {
+                    return 0d;
+                }
+                // No break here
+            case NOT_EQUALS:
+                if (isIllegal(v)) {
+                    return 1d;
+                }
 
-    	// some code goes here
-        return -1.0;
+                result = ((double) getBucketHeight(v)) / getWidth() / totalTuples;
+
+                if (op == Predicate.Op.NOT_EQUALS) {
+                    result = 1 - result;
+                }
+                break;
+            case LESS_THAN_OR_EQ:
+                if (tooSmall(v)) {
+                    return 0d;
+                }
+                if (tooLarge(v)) {
+                    return 1d;
+                }
+                // No break here
+            case GREATER_THAN:
+                if (tooSmall(v)) {
+                    return 1d;
+                }
+                if (tooLarge(v)) {
+                    return 0d;
+                }
+
+                int rightCnt = 0;
+                for (int i = getBucketIndex(v) + 1; i < getBuckets().length; i++) {
+                    rightCnt += buckets[i];
+                }
+                result = ((double) rightCnt) / getTotalTuples()
+                        + getBucketHeight(v) * Math.max(0d, getRightBorder(v) - (v + 1)) / getWidth() / getTotalTuples();
+
+                if (op == Predicate.Op.LESS_THAN_OR_EQ) {
+                    result = 1 - result;
+                }
+                break;
+            case GREATER_THAN_OR_EQ:
+                if (tooSmall(v)) {
+                    return 1d;
+                }
+                if (tooLarge(v)) {
+                    return 0d;
+                }
+                // No break here
+            case LESS_THAN:
+                if (tooSmall(v)) {
+                    return 0d;
+                }
+                if (tooLarge(v)) {
+                    return 1d;
+                }
+
+                int leftCnt = 0;
+                for (int i = getBucketIndex(v) - 1; i >= 0; i--) {
+                    leftCnt += buckets[i];
+                }
+                result = ((double) leftCnt) / getTotalTuples()
+                        + getBucketHeight(v) * Math.max(0d, (v - 1) - getLeftBorder(v)) / getWidth() / getTotalTuples();
+
+                if (op == Predicate.Op.GREATER_THAN_OR_EQ) {
+                    result = 1 - result;
+                }
+                break;
+            default:
+                throw new IllegalStateException("Unsupported Operation: " + op);
+        }
+        return result;
     }
     
     /**
@@ -63,12 +214,45 @@ public class IntHistogram {
         // some code goes here
         return 1.0;
     }
-    
+
+    public int[] getBuckets() {
+        return buckets;
+    }
+
+    public int getMaxValue() {
+        return maxValue;
+    }
+
+    public int getMinValue() {
+        return minValue;
+    }
+
+    public int getWidth() {
+        return width;
+    }
+
+    public int getTotalTuples() {
+        return totalTuples;
+    }
+
+    private void setTotalTuples(int totalTuples) {
+        this.totalTuples = totalTuples;
+    }
+
+    private void IncreaseTotalTuples() {
+        setTotalTuples(getTotalTuples() + 1);
+    }
+
     /**
      * @return A string describing this histogram, for debugging purposes
      */
+    @Override
     public String toString() {
-        // some code goes here
-        return null;
+        return "IntHistogram{" +
+                "buckets=" + Arrays.toString(buckets) +
+                ", maxValue=" + maxValue +
+                ", minValue=" + minValue +
+                ", width=" + width +
+                '}';
     }
 }
