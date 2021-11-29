@@ -130,7 +130,8 @@ public class JoinOptimizer {
             // HINT: You may need to use the variable "j" if you implemented
             // a join algorithm that's more complicated than a basic
             // nested-loops join.
-            return -1.0;
+            return cost1 + card1 * cost2 // IO cost
+                    + card1 + card2; // CPU cost
         }
     }
 
@@ -174,9 +175,17 @@ public class JoinOptimizer {
                                                    String field2PureName, int card1, int card2, boolean t1pkey,
                                                    boolean t2pkey, Map<String, TableStats> stats,
                                                    Map<String, Integer> tableAliasToId) {
-        int card = 1;
-        // some code goes here
-        return card <= 0 ? 1 : card;
+        int result;
+        double fraction = 0.3;
+        if (joinOp == Predicate.Op.EQUALS) {
+            if (t1pkey && t2pkey) return Math.min(card1, card2);
+            if (t1pkey) return card1;
+            if (t2pkey) return card2;
+            result = Math.max(card1, card2);
+        } else {
+            result = (int) (card1 * card2 * fraction);
+        }
+        return result;
     }
 
     /**
@@ -236,9 +245,28 @@ public class JoinOptimizer {
             Map<String, Double> filterSelectivities, boolean explain)
             throws ParsingException {
 
-        // some code goes here
-        //Replace the following
-        return joins;
+        PlanCache pc = new PlanCache();
+        Set<LogicalJoinNode> joinsSet = new HashSet<>(joins);
+        for (int size = 1; size <= joinsSet.size(); size++) {
+            for (int subSize = 1; subSize <= size; subSize++) {
+                Set<Set<LogicalJoinNode>> subSets = enumerateSubsets(joins, subSize);
+                for (Set<LogicalJoinNode> subSet : subSets) {
+                    double bestCostSoFar = Double.MAX_VALUE;
+                    for (LogicalJoinNode joinToRemove : subSet) {
+                        CostCard costCard = computeCostAndCardOfSubplan(stats, filterSelectivities, joinToRemove, subSet, bestCostSoFar, pc);
+                        if (costCard != null) {
+                            bestCostSoFar = Math.min(bestCostSoFar, costCard.cost);
+                            // TODO(JACK ZHANG): 2021/11/29 should we do this in #computeCostAndCardOfSubplan?
+                            pc.addPlan(subSet, bestCostSoFar, costCard.card, costCard.plan);
+                        }
+                    }
+                }
+            }
+        }
+        if (explain) {
+            printJoins(pc.getOrder(joinsSet), pc, stats, filterSelectivities);
+        }
+        return pc.getOrder(joinsSet);
     }
 
     // ===================== Private Methods =================================
