@@ -21,8 +21,8 @@ public class Insert extends Operator {
     private static final long serialVersionUID = 1L;
 
     private OpIterator child;
-    private int tableId;
-    private TransactionId tid;
+    private final int tableId;
+    private final TransactionId tid;
     private final TupleDesc operatorTD = new TupleDesc(new Type[]{Type.INT_TYPE});
     private final TupleDesc tableTD;
 
@@ -84,19 +84,20 @@ public class Insert extends Operator {
      * @see BufferPool#insertTuple
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
-        int cnt = 0;
+        if (!child.hasNext()) return null;
+        int inserted = 0;
         while (child.hasNext()) {
             try {
                 Tuple next = child.next();
                 next.resetTupleDesc(getTableTupleDesc());
                 Database.getBufferPool().insertTuple(tid, tableId, next);
-                ++cnt;
+                ++inserted;
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
         Tuple tuple = new Tuple(getTupleDesc());
-        tuple.setField(0, new IntField(cnt));
+        tuple.setField(0, new IntField(inserted));
         return tuple;
     }
 

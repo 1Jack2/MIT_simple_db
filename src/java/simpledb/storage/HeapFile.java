@@ -140,6 +140,8 @@ public class HeapFile implements DbFile {
             page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
             if (page.getNumEmptySlots() > 0) {
                 break;
+            } else {
+                Database.getBufferPool().unsafeReleasePage(tid, page.getId());
             }
         }
         //endregion

@@ -1,12 +1,15 @@
 package simpledb.storage;
 
-import simpledb.common.*;
+import simpledb.common.Database;
+import simpledb.common.DbException;
+import simpledb.common.Permissions;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
-import java.io.*;
-
+import javax.xml.crypto.Data;
+import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -32,12 +35,12 @@ public class BufferPool {
 
     private final Page[] pages;
 
+    /** LRU cache of pages. */
     /** map pageId to page slotId */
     private final Map<PageId, Integer> pageTable;
-
-    private final Queue<PageId> lruPids;
-
+    private final List<PageId> lruPids;
     private final Set<Integer> availableSlots;
+    private final Object metaLatch = new Object();
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -84,15 +87,24 @@ public class BufferPool {
      * @param pid the ID of the requested page
      * @param perm the requested permissions on the page
      */
-    public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
+    public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
-        if (pageTable.containsKey(pid)) {
-            lruPids.remove(pid);
-            lruPids.add(pid);
-            return pages[pageTable.get(pid)];
+        switch (perm) {
+            case READ_ONLY: Database.getLockManager().lockShared(tid, pid); break;
+            case READ_WRITE: Database.getLockManager().lockExclusive(tid, pid); break;
+            default: throw new DbException("Unknown permission: " + perm);
         }
-        Integer next = getSlotIdAndUpdatePageTable(pid);
-        return pages[next] = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
+        synchronized (metaLatch) {
+            if (pageTable.containsKey(pid)) {
+                // Move to head
+                lruPids.remove(pid);
+                lruPids.add(pid);
+
+                return pages[pid2slotId(pid)];
+            }
+            Integer next = getSlotIdAndUpdatePageTable(pid);
+            return pages[next] = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
+        }
     }
 
     private Integer getSlotIdAndUpdatePageTable(PageId pid) throws DbException {
@@ -106,7 +118,6 @@ public class BufferPool {
     /**
      * Get an available slot id
      * @return slotId
-     * TODO(ZWB): not thread safe
      */
     private Integer getAvailableSlotId() throws DbException {
         Iterator<Integer> iterator = availableSlots.iterator();
@@ -126,9 +137,11 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      * @param pid the ID of the page to unlock
      */
-    public  void unsafeReleasePage(TransactionId tid, PageId pid) {
-        // some code goes here
-        // not necessary for lab1|lab2
+    public void unsafeReleasePage(TransactionId tid, PageId pid) {
+        Database.getLockManager().unlock(tid, pid);
+        synchronized (metaLatch) {
+            availableSlots.add(pid2slotId(pid));
+        }
     }
 
     /**
@@ -137,15 +150,13 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      */
     public void transactionComplete(TransactionId tid) {
-        // some code goes here
-        // not necessary for lab1|lab2
+        transactionComplete(tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
     public boolean holdsLock(TransactionId tid, PageId p) {
-        // some code goes here
-        // not necessary for lab1|lab2
-        return false;
+        if (tid == null) return false;
+        return Database.getLockManager().holdsLock(tid, p);
     }
 
     /**
@@ -156,8 +167,22 @@ public class BufferPool {
      * @param commit a flag indicating whether we should commit or abort
      */
     public void transactionComplete(TransactionId tid, boolean commit) {
-        // some code goes here
-        // not necessary for lab1|lab2
+        if (commit) {
+            try {
+                flushPages(tid);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        } else {
+            restorePages(tid);
+        }
+
+        // release all locks
+        for (PageId pageId : pageTable.keySet()) {
+            if (holdsLock(tid, pageId)) {
+                Database.getLockManager().unlock(tid, pageId);
+            }
+        }
     }
 
     /**
@@ -178,12 +203,15 @@ public class BufferPool {
     public void insertTuple(TransactionId tid, int tableId, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
         DbFile dbFile = Database.getCatalog().getDatabaseFile(tableId);
-        List<Page> mPageList = dbFile.insertTuple(tid, t);
-        for (Page page : mPageList) {
-            Integer slotId = pageTable.get(page.getId());
-            // Add new pages into buffer pool
-            if (slotId == null) {
-                pages[getSlotIdAndUpdatePageTable(page.getId())] = page;
+        List<Page> mPages = dbFile.insertTuple(tid, t);
+        synchronized (metaLatch) {
+            for (Page page : mPages) {
+                Integer slotId = pid2slotId(page.getId());
+                // Add new pages into buffer pool
+                if (slotId == null) {
+                    pages[getSlotIdAndUpdatePageTable(page.getId())] = page;
+                }
+                page.markDirty(true, tid);
             }
         }
     }
@@ -201,10 +229,20 @@ public class BufferPool {
      * @param tid the transaction deleting the tuple.
      * @param t the tuple to delete
      */
-    public  void deleteTuple(TransactionId tid, Tuple t)
+    public void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
         DbFile dbFile = Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId());
-        dbFile.deleteTuple(tid, t);
+        List<Page> mPages = dbFile.deleteTuple(tid, t);
+        synchronized (metaLatch) {
+            for (Page page : mPages) {
+                Integer slotId = pid2slotId(page.getId());
+                // Add new pages into buffer pool
+                if (slotId == null) {
+                    pages[getSlotIdAndUpdatePageTable(page.getId())] = page;
+                }
+                page.markDirty(true, tid);
+            }
+        }
     }
 
     /**
@@ -212,10 +250,12 @@ public class BufferPool {
      * NB: Be careful using this routine -- it writes dirty data to disk so will
      *     break simpledb if running in NO STEAL mode.
      */
-    public synchronized void flushAllPages() throws IOException {
-        // some code goes here
-        // not necessary for lab1
-
+    public void flushAllPages() throws IOException {
+        synchronized (metaLatch) {
+            for (PageId pageId : pageTable.keySet()) {
+                flushPage(pageId);
+            }
+        }
     }
 
     /** Remove the specific page id from the buffer pool.
@@ -226,53 +266,107 @@ public class BufferPool {
         Also used by B+ tree files to ensure that deleted pages
         are removed from the cache so they can be reused safely
     */
-    public synchronized void discardPage(PageId pid) {
-        if (!pageTable.containsKey(pid)) {
-            // TODO(JACK ZHANG): 2021/11/1 Or we should do nothing?
-            throw new RuntimeException(String.format("Page{%s} is not in buffer pool", pid));
+    public void discardPage(PageId pid) {
+        synchronized (metaLatch) {
+            if (!pageTable.containsKey(pid)) {
+                // TODO(JACK ZHANG): 2021/11/1 Or we should do nothing?
+                throw new RuntimeException(String.format("Page{%s} is not in buffer pool", pid));
+            }
+            Integer slotId = pid2slotId(pid);
+            // Remove from page table
+            pageTable.remove(pid);
+            // Add into available slotIds
+            availableSlots.add(slotId);
         }
-        Integer slotId = pageTable.get(pid);
-        // Remove from page table
-        pageTable.remove(pid);
-        // Add into available slotIds
-        availableSlots.add(slotId);
     }
 
     /**
      * Flushes a certain page to disk
      * @param pid an ID indicating the page to flush
      */
-    private synchronized  void flushPage(PageId pid) throws IOException {
-        if (!pageTable.containsKey(pid)) {
-            // TODO(JACK ZHANG): 2021/11/1 Or we should do nothing?
-            throw new RuntimeException(String.format("Page{%s} is not in buffer pool", pid));
+    private void flushPage(PageId pid) throws IOException {
+        Page page;
+        synchronized (metaLatch) {
+            if (!pageTable.containsKey(pid)) {
+                // TODO(JACK ZHANG): 2021/11/1 Or we should do nothing?
+                throw new RuntimeException(String.format("Page{%s} is not in buffer pool", pid));
+            }
+            Integer slotId = pid2slotId(pid);
+            page = pages[slotId];
         }
-        Integer slotId = pageTable.get(pid);
-        Page page = pages[slotId];
         // flush page to disk
-        Database.getCatalog().getDatabaseFile(pid.getTableId()).writePage(page);
         page.markDirty(false, null);
+        Database.getCatalog().getDatabaseFile(pid.getTableId()).writePage(page);
     }
 
     /** Write all pages of the specified transaction to disk.
      */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
-        for (Page page : pages) {
-            flushPage(page.getId());
+    public void flushPages(TransactionId tid) throws IOException {
+        synchronized (metaLatch) {
+            for (PageId pid : pageTable.keySet()) {
+                if (Objects.equals(tid, pages[pid2slotId(pid)].isDirty())) {
+                    flushPage(pid);
+                }
+            }
         }
+    }
+
+
+    /**
+     * Write all pages of the specified transaction to disk.
+     */
+    public void restorePages(TransactionId tid) {
+        synchronized (metaLatch) {
+            for (PageId pid : pageTable.keySet()) {
+                if (Objects.equals(tid, pages[pid2slotId(pid)].isDirty())) {
+                    Page pageFromDisk = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
+                    pages[pid2slotId(pid)] = pageFromDisk;
+                }
+            }
+        }
+    }
+
+    /**
+     * Get slotId from pageId
+     * @param pid page id
+     * @return slot id
+     */
+    private Integer pid2slotId(PageId pid) {
+        return pageTable.get(pid);
     }
 
     /**
      * Discards a page from the buffer pool.
      * Flushes the page to disk to ensure dirty pages are updated on disk.
+     * @implSpec  This method should be sync by metaLock.
      */
-    private synchronized  void evictPage() throws DbException {
-        PageId pid = lruPids.remove();
+    private void evictPage() throws DbException {
+        PageId pid = null;
+        Iterator<PageId> iterator = lruPids.iterator();
+        while (iterator.hasNext()) {
+            PageId next = iterator.next();
+            Integer slotId = pid2slotId(next);
+            if (slotId != null && pages[slotId].isDirty() == null) {
+                pid = next;
+                iterator.remove();
+                break;
+            }
+        }
+        if (pid == null) {
+            throw new DbException("No page to evict, all pages are dirty");
+        }
         try {
             flushPage(pid);
             discardPage(pid);
+            Database.getLockManager().unlock(pid);
         } catch (IOException e) {
             throw new DbException(String.format("Flush page{%s} failed when eviction", pid));
+        }
+    }
+
+    private Set<PageId> getPidsInTable() {
+        synchronized (metaLatch) {
+            return pageTable.keySet();
         }
     }
 

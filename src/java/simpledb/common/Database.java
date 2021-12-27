@@ -2,6 +2,7 @@ package simpledb.common;
 
 import simpledb.storage.BufferPool;
 import simpledb.storage.LogFile;
+import simpledb.transaction.LockManager;
 
 import java.io.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -20,6 +21,7 @@ public class Database {
     private static final AtomicReference<Database> _instance = new AtomicReference<>(new Database());
     private final Catalog _catalog;
     private final BufferPool _bufferpool;
+    private final LockManager _lockManager;
 
     private final static String LOGFILENAME = "log";
     private final LogFile _logfile;
@@ -27,6 +29,7 @@ public class Database {
     private Database() {
         _catalog = new Catalog();
         _bufferpool = new BufferPool(BufferPool.DEFAULT_PAGES);
+        _lockManager = new LockManager();
         LogFile tmp = null;
         try {
             tmp = new LogFile(new File(LOGFILENAME));
@@ -48,6 +51,10 @@ public class Database {
         return _instance.get()._bufferpool;
     }
 
+    public static LockManager getLockManager() {
+        return _instance.get()._lockManager;
+    }
+
     /** Return the catalog of the static Database instance */
     public static Catalog getCatalog() {
         return _instance.get()._catalog;
@@ -59,10 +66,15 @@ public class Database {
      */
     public static BufferPool resetBufferPool(int pages) {
         java.lang.reflect.Field bufferPoolF=null;
+        java.lang.reflect.Field lockManagerF=null;
         try {
             bufferPoolF = Database.class.getDeclaredField("_bufferpool");
             bufferPoolF.setAccessible(true);
             bufferPoolF.set(_instance.get(), new BufferPool(pages));
+
+            lockManagerF = Database.class.getDeclaredField("_lockManager");
+            lockManagerF.setAccessible(true);
+            lockManagerF.set(_instance.get(), new LockManager());
         } catch (NoSuchFieldException | IllegalAccessException | IllegalArgumentException | SecurityException e) {
             e.printStackTrace();
         }
