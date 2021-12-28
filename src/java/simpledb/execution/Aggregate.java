@@ -22,9 +22,9 @@ public class Aggregate extends Operator {
 
     private OpIterator aggreagatorIt;
 
-    private int afield;
-    private int gfield;
-    private Aggregator.Op aop;
+    private final int afield;
+    private final int gfield;
+    private final Aggregator.Op aop;
 
     /**
      * Constructor.
@@ -96,7 +96,7 @@ public class Aggregate extends Operator {
         child.open();
         // init aggregator
         TupleDesc td = child.getTupleDesc();
-        Type gbfieldType = td.getFieldType(gfield);
+        Type gbfieldType = -1 == gfield ? null : td.getFieldType(gfield);
         Type afieldType = td.getFieldType(afield);
         Aggregator aggregator;
         switch (afieldType) {
