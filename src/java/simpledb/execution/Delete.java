@@ -24,7 +24,7 @@ public class Delete extends Operator {
     private final TransactionId tid;
     private static final TupleDesc OPERATOR_TD = new TupleDesc(new Type[]{Type.INT_TYPE});
 
-    // To past DeleteTest
+    // Should be used once
     private boolean used = false;
 
     /**

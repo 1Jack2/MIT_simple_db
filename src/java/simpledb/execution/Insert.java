@@ -26,6 +26,9 @@ public class Insert extends Operator {
     private final TupleDesc operatorTD = new TupleDesc(new Type[]{Type.INT_TYPE});
     private final TupleDesc tableTD;
 
+    // Should be used once
+    private boolean used = false;
+
     /**
      * Constructor.
      *
@@ -84,7 +87,9 @@ public class Insert extends Operator {
      * @see BufferPool#insertTuple
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
-        if (!child.hasNext()) return null;
+        if (used) return null;
+        used = true;
+
         int inserted = 0;
         while (child.hasNext()) {
             try {

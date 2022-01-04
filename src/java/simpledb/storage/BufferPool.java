@@ -35,7 +35,7 @@ public class BufferPool {
 
     private final Page[] pages;
 
-    /** LRU cache of pages. */
+    /* LRU cache of pages. */
     /** map pageId to page slotId */
     private final Map<PageId, Integer> pageTable;
     private final List<PageId> lruPids;
@@ -89,10 +89,17 @@ public class BufferPool {
      */
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
-        switch (perm) {
-            case READ_ONLY: Database.getLockManager().lockShared(tid, pid); break;
-            case READ_WRITE: Database.getLockManager().lockExclusive(tid, pid); break;
-            default: throw new DbException("Unknown permission: " + perm);
+        if (tid != null) {
+            switch (perm) {
+                case READ_ONLY:
+                    Database.getLockManager().lockShared(tid, pid);
+                    break;
+                case READ_WRITE:
+                    Database.getLockManager().lockExclusive(tid, pid);
+                    break;
+                default:
+                    throw new DbException("Unknown permission: " + perm);
+            }
         }
         synchronized (metaLatch) {
             if (pageTable.containsKey(pid)) {
