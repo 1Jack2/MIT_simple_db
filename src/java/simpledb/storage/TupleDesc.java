@@ -10,7 +10,7 @@ import java.util.*;
  */
 public class TupleDesc implements Serializable {
 
-    private TDItem[] tdItems;
+    private final TDItem[] tdItems;
 
     /**
      * A help class to facilitate organizing the information of each field
@@ -58,8 +58,7 @@ public class TupleDesc implements Serializable {
      *        that are included in this TupleDesc
      * */
     public Iterator<TDItem> iterator() {
-        // some code goes here
-        return null;
+        return Arrays.asList(tdItems).iterator();
     }
 
     private static final long serialVersionUID = 1L;
@@ -76,7 +75,6 @@ public class TupleDesc implements Serializable {
      *            be null.
      */
     public TupleDesc(Type[] typeAr, String[] fieldAr) {
-        // some code goes here
         assert(typeAr.length == fieldAr.length && typeAr.length > 0);
         tdItems = new TDItem[typeAr.length];
         for (int i = 0; i < tdItems.length; i++) {
@@ -93,12 +91,7 @@ public class TupleDesc implements Serializable {
      *            TupleDesc. It must contain at least one entry.
      */
     public TupleDesc(Type[] typeAr) {
-        // some code goes here
-        assert(typeAr.length > 0);
-        tdItems = new TDItem[typeAr.length];
-        for (int i = 0; i < tdItems.length; i++) {
-            tdItems[i] = new TDItem(typeAr[i], null);
-        }
+        this(typeAr, new String[typeAr.length]);
     }
 
     public TupleDesc(TDItem[] tdItems) {
@@ -109,7 +102,6 @@ public class TupleDesc implements Serializable {
      * @return the number of fields in this TupleDesc
      */
     public int numFields() {
-        // some code goes here
         return tdItems.length;
     }
 
@@ -123,10 +115,7 @@ public class TupleDesc implements Serializable {
      *             if i is not a valid field reference.
      */
     public String getFieldName(int i) throws NoSuchElementException {
-        // some code goes here
-        if (i >= tdItems.length) {
-            throw new NoSuchElementException();
-        }
+        if (i <0 || i >= tdItems.length) throw new NoSuchElementException();
         return tdItems[i].fieldName;
     }
 
@@ -141,10 +130,7 @@ public class TupleDesc implements Serializable {
      *             if i is not a valid field reference.
      */
     public Type getFieldType(int i) throws NoSuchElementException {
-        // some code goes here
-        if (i >= tdItems.length) {
-            throw new NoSuchElementException();
-        }
+        if (i <0 || i >= tdItems.length) throw new NoSuchElementException();
         return tdItems[i].fieldType;
     }
 
@@ -158,7 +144,6 @@ public class TupleDesc implements Serializable {
      *             if no field with a matching name is found.
      */
     public int fieldNameToIndex(String name) throws NoSuchElementException {
-        // some code goes here
         if (name != null) {
             for (int i = 0; i < tdItems.length; i++) {
                 if (name.equals(tdItems[i].fieldName)) {
@@ -174,14 +159,7 @@ public class TupleDesc implements Serializable {
      *         Note that tuples from a given TupleDesc are of a fixed size.
      */
     public int getSize() {
-        // some code goes here
-        // TODO(JACK): Should filedName be include?
-        int size = 0;
-        for (TDItem tdItem:
-             tdItems) {
-            size += tdItem.fieldType.getLen();
-        }
-        return size;
+        return Arrays.stream(tdItems).mapToInt(tdItem -> tdItem.fieldType.getLen()).sum();
     }
 
     /**
@@ -195,7 +173,6 @@ public class TupleDesc implements Serializable {
      * @return the new TupleDesc
      */
     public static TupleDesc merge(TupleDesc td1, TupleDesc td2) {
-        // some code goes here
         int len1 = td1.getTdItems().length;
         int len2 = td2.getTdItems().length;
         int newLength = len1 + len2;
@@ -236,7 +213,6 @@ public class TupleDesc implements Serializable {
      * @return String describing this descriptor.
      */
     public String toString() {
-        // some code goes here
         StringBuilder sb = new StringBuilder();
         TDItem[] tdItems = getTdItems();
         for (int i = 0; i < tdItems.length - 1; i++) {

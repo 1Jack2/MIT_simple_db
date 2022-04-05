@@ -23,15 +23,19 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class Catalog {
 
-    private Map<String, Map<String, Object>> tables;
-    private Map<Integer, String> tableNames;
+    /** table name -> {file, primary key field} */
+    private final Map<String, Map<String, Object>> tables;
+    /** file id -> table name */
+    private final Map<Integer, String> tableNames;
+
+    private static final String FILE_KEY = "file";
+    private static final String PK_KEY = "pk";
 
     /**
      * Constructor.
      * Creates a new, empty catalog.
      */
     public Catalog() {
-        // some code goes here
         tables = new HashMap<>();
         tableNames = new HashMap<>();
     }
@@ -46,16 +50,16 @@ public class Catalog {
      * @param pkeyField the name of the primary key field
      */
     public void addTable(DbFile file, String name, String pkeyField) {
-        // some code goes here
         if (!tables.containsKey(name)) {
             tables.put(name, new HashMap<>(2));
         } else {
-            tableNames.remove(((DbFile) tables.get(name).get("file")).getId());
+            // name map to a new file, so delete the old map of id to name
+            tableNames.remove(((DbFile) tables.get(name).get(FILE_KEY)).getId());
         }
         tableNames.put(file.getId(), name);
         Map<String, Object> table = tables.get(name);
-        table.put("file", file);
-        table.put("pk", pkeyField);
+        table.put(FILE_KEY, file);
+        table.put(PK_KEY, pkeyField);
     }
 
     public void addTable(DbFile file, String name) {
@@ -78,9 +82,8 @@ public class Catalog {
      * @throws NoSuchElementException if the table doesn't exist
      */
     public int getTableId(String name) throws NoSuchElementException {
-        // some code goes here
         if (!tables.containsKey(name)) throw new NoSuchElementException();
-        return ((DbFile) tables.get(name).get("file")).getId();
+        return ((DbFile) tables.get(name).get(FILE_KEY)).getId();
     }
 
     /**
@@ -90,7 +93,6 @@ public class Catalog {
      * @throws NoSuchElementException if the table doesn't exist
      */
     public TupleDesc getTupleDesc(int tableid) throws NoSuchElementException {
-        // some code goes here
         return getDatabaseFile(tableid).getTupleDesc();
     }
 
@@ -101,32 +103,27 @@ public class Catalog {
      *     function passed to addTable
      */
     public DbFile getDatabaseFile(int tableid) throws NoSuchElementException {
-        // some code goes here
-        String name;
-        if ((name = getTableName(tableid)) == null) throw new NoSuchElementException();
-        return ((DbFile) tables.get(name).get("file"));
+        String name = getTableName(tableid);
+        if (name == null) throw new NoSuchElementException();
+        return ((DbFile) tables.get(name).get(FILE_KEY));
     }
 
     public String getPrimaryKey(int tableid) throws NoSuchElementException {
-        // some code goes here
-        String name;
-        if ((name = getTableName(tableid)) == null) throw new NoSuchElementException();
-        return ((String) tables.get(name).get("pk"));
+        String name = getTableName(tableid);
+        if (name == null) throw new NoSuchElementException();
+        return ((String) tables.get(name).get(PK_KEY));
     }
 
     public Iterator<Integer> tableIdIterator() {
-        // some code goes here
-        return null;
+        return tableNames.keySet().iterator();
     }
 
     public String getTableName(int id) {
-        // some code goes here
         return tableNames.get(id);
     }
     
     /** Delete all tables from the catalog */
     public void clear() {
-        // some code goes here
         tables.clear();
         tableNames.clear();
     }

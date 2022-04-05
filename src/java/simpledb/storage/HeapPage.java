@@ -315,9 +315,11 @@ public class HeapPage implements Page {
      */
     public int getNumEmptySlots() {
         int cnt = 0;
+        int MASK = 1;
+        int BYTE_SIZE = 8;
         for (int i = 0; i < getHeaderSize(); i++) {
-            for (int j = 0; j < 8; j++) {
-                if (((header[i] >> j) & 1) == 0) {
+            for (int j = 0; j < BYTE_SIZE; j++) {
+                if ((header[i] & (MASK << j)) == 0) {
                     ++cnt;
                 }
             }
@@ -331,7 +333,8 @@ public class HeapPage implements Page {
     public boolean isSlotUsed(int i) {
         int byteNo = i / 8;
         int bitNo = i % 8;
-        return ((header[byteNo] >> bitNo) & 1) == 1;
+        int MASK = 1;
+        return (header[byteNo] & (MASK << bitNo)) != 0;
     }
 
     /**
@@ -353,13 +356,13 @@ public class HeapPage implements Page {
      * (note that this iterator shouldn't return tuples in empty slots!)
      */
     public Iterator<Tuple> iterator() {
-        // some code goes here
         return new Iterator<Tuple>() {
             private int pos = 0;
 
             @Override
             public boolean hasNext() {
-                for (; pos < getNumTuples(); pos++) {
+                int numTuples = getNumTuples();
+                for (; pos < numTuples; pos++) {
                     if (isSlotUsed(pos)) return true;
                 }
                 return false;

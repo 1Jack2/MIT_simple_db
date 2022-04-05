@@ -14,7 +14,7 @@ public class Tuple implements Serializable {
 
     private TupleDesc tupleDesc;
     private RecordId recordId;
-    private Field[] fields;
+    private final Field[] fields;
 
     private static final long serialVersionUID = 1L;
 
@@ -34,7 +34,6 @@ public class Tuple implements Serializable {
      * @return The TupleDesc representing the schema of this tuple.
      */
     public TupleDesc getTupleDesc() {
-        // some code goes here
         return tupleDesc;
     }
 
@@ -101,8 +100,7 @@ public class Tuple implements Serializable {
      * */
     public Iterator<Field> fields()
     {
-        // some code goes here
-        return null;
+        return Arrays.asList(fields).iterator();
     }
 
     /**
