@@ -18,13 +18,16 @@ public class Aggregate extends Operator {
 
     private static final long serialVersionUID = 1L;
 
+    /** The OpIterator that is feeding us tuples. */
     private OpIterator child;
-
-    private OpIterator aggreagatorIt;
-
+    /** The column over which we are computing an aggregate */
     private final int afield;
+    /** The column over which we are grouping the result, or -1 if there is no grouping */
     private final int gfield;
-    private final Aggregator.Op aop;
+    /** The aggregation operator to use */
+    private final Aggregator.Op aOp;
+
+    private OpIterator opIterator;
 
     /**
      * Constructor.
@@ -43,7 +46,7 @@ public class Aggregate extends Operator {
         this.child = child;
         this.afield = afield;
         this.gfield = gfield;
-        this.aop = aop;
+        this.aOp = aop;
     }
 
     /**
@@ -83,7 +86,7 @@ public class Aggregate extends Operator {
      * @return return the aggregate operator
      */
     public Aggregator.Op aggregateOp() {
-        return aop;
+        return aOp;
     }
 
     public static String nameOfAggregatorOp(Aggregator.Op aop) {
@@ -92,19 +95,19 @@ public class Aggregate extends Operator {
 
     public void open() throws NoSuchElementException, DbException,
             TransactionAbortedException {
-        super.open();
         child.open();
+
         // init aggregator
         TupleDesc td = child.getTupleDesc();
-        Type gbfieldType = -1 == gfield ? null : td.getFieldType(gfield);
+        Type gbfieldType = notNeedGroupBy() ? null : td.getFieldType(gfield);
         Type afieldType = td.getFieldType(afield);
         Aggregator aggregator;
         switch (afieldType) {
             case INT_TYPE:
-                aggregator = new IntegerAggregator(gfield, gbfieldType, afield, aop);
+                aggregator = new IntegerAggregator(gfield, gbfieldType, afield, aOp);
                 break;
             case STRING_TYPE:
-                aggregator = new StringAggregator(gfield, gbfieldType, afield, aop);
+                aggregator = new StringAggregator(gfield, gbfieldType, afield, aOp);
                 break;
             default:
                 throw new IllegalStateException("unsupported aggregate on type: " + afieldType);
@@ -114,8 +117,14 @@ public class Aggregate extends Operator {
             aggregator.mergeTupleIntoGroup(child.next());
         }
         // get iterator
-        aggreagatorIt = aggregator.iterator();
-        aggreagatorIt.open();
+        opIterator = aggregator.iterator();
+        opIterator.open();
+
+        super.open();
+    }
+
+    private boolean notNeedGroupBy() {
+        return Aggregator.NO_GROUPING == gfield;
     }
 
     /**
@@ -126,10 +135,10 @@ public class Aggregate extends Operator {
      * aggregate. Should return null if there are no more tuples.
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
-        if (aggreagatorIt == null) {
+        if (opIterator == null) {
             throw new IllegalStateException("Aggregator not yet open");
         }
-        return aggreagatorIt.hasNext() ? aggreagatorIt.next() : null;
+        return opIterator.hasNext() ? opIterator.next() : null;
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
@@ -150,21 +159,20 @@ public class Aggregate extends Operator {
      */
     public TupleDesc getTupleDesc() {
         TupleDesc.TDItem[] tdItems = child.getTupleDesc().getTdItems();
-        TupleDesc.TDItem atdItem = tdItems[aggregateField()];
-        TupleDesc.TDItem gtdItem = tdItems[groupField()];
-//        TupleDesc.TDItem atdItemNew = new TupleDesc.TDItem(atdItem.fieldType,
-//                String.format("%s(%s)", nameOfAggregatorOp(aop), atdItem.fieldName));
-        TupleDesc.TDItem atdItemNew = new TupleDesc.TDItem(atdItem.fieldType, gtdItem.fieldName);
-        return new TupleDesc(new TupleDesc.TDItem[]{gtdItem, atdItemNew});
-
-
+        TupleDesc.TDItem aTdItem = tdItems[aggregateField()];
+        TupleDesc.TDItem gTdItem = tdItems[groupField()];
+        // FIXME: 4/10/22 javadoc与测试AggregageTest不一致
+//        TupleDesc.TDItem aTdItemNew = new TupleDesc.TDItem(aTdItem.fieldType,
+//                String.format("%s(%s)", nameOfAggregatorOp(aOp), aTdItem.fieldName));
+        TupleDesc.TDItem aTdItemNew = new TupleDesc.TDItem(aTdItem.fieldType, gTdItem.fieldName);
+        return new TupleDesc(new TupleDesc.TDItem[]{gTdItem, aTdItemNew});
     }
 
     public void close() {
         super.close();
+        opIterator.close();
+        opIterator = null;
         child.close();
-        aggreagatorIt.close();
-        aggreagatorIt = null;
     }
 
     @Override

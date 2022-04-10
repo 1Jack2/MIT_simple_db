@@ -10,17 +10,17 @@ import java.util.Map;
 
 /**
  * Knows how to compute some aggregate over a set of StringFields.
+ * @see IntegerAggregator
  */
 public class StringAggregator implements Aggregator {
 
     private static final long serialVersionUID = 1L;
 
-    private int gbfield;
-    private Type gbfieldtype;
-    private int afield;
-    private Op what;
+    private final int gbfield;
+    private final Type gbfieldtype;
+    private final int afield;
+    private final Op what;
     private Map<Field, Integer> countMap = new HashMap<>();
-    private int count = 0;
 
     /**
      * Aggregate constructor
@@ -48,7 +48,6 @@ public class StringAggregator implements Aggregator {
     public void mergeTupleIntoGroup(Tuple tup) {
         Field groupByField = tup.getField(gbfield);
         // update count
-        ++count;
         countMap.put(groupByField, 1 + (countMap.getOrDefault(groupByField, 0)));
     }
 
@@ -62,21 +61,23 @@ public class StringAggregator implements Aggregator {
      */
     public OpIterator iterator() {
         TupleDesc td;
-        if (needGroupBy()) {
+        if (notNeedGroupBy()) {
             td = new TupleDesc(new Type[]{Type.INT_TYPE});
         } else {
             td = new TupleDesc(new Type[]{gbfieldtype, Type.INT_TYPE});
         }
         List<Tuple> tuples = new ArrayList<>();
         Tuple tuple;
-        if (needGroupBy()) {
+        if (notNeedGroupBy()) {
             tuple = new Tuple(td);
-            tuple.setField(0, new IntField(count));
+            tuple.setField(0, new IntField(countMap.get(null)));
             tuples.add(tuple);
         } else {
             for (Map.Entry<Field, Integer> entry : countMap.entrySet()) {
                 tuple = new Tuple(td);
+                // tuple0 is groupVal
                 tuple.setField(0, entry.getKey());
+                // tuple1 is aggregateV
                 tuple.setField(1, new IntField(entry.getValue()));
                 tuples.add(tuple);
             }
@@ -84,7 +85,7 @@ public class StringAggregator implements Aggregator {
         return new TupleIterator(td, tuples);
     }
 
-    private boolean needGroupBy() {
+    private boolean notNeedGroupBy() {
         return gbfield == NO_GROUPING;
     }
 
