@@ -20,8 +20,11 @@ public class Delete extends Operator {
 
     private static final long serialVersionUID = 1L;
 
+    /** The child operator from which to read tuples for deletion */
     private OpIterator child;
+    /** The transaction this delete runs in */
     private final TransactionId tid;
+
     private static final TupleDesc OPERATOR_TD = new TupleDesc(new Type[]{Type.INT_TYPE});
 
     // Should be used once
@@ -42,19 +45,19 @@ public class Delete extends Operator {
     }
 
     public TupleDesc getTupleDesc() {
-        return child.getTupleDesc();
+        return OPERATOR_TD;
     }
 
     public void open() throws DbException, TransactionAbortedException {
-        super.open();
         child.open();
         used = false;
+        super.open();
     }
 
     public void close() {
         super.close();
-        child.close();
         used = true;
+        child.close();
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
@@ -82,10 +85,10 @@ public class Delete extends Operator {
                 Database.getBufferPool().deleteTuple(tid, next);
                 ++deleted;
             } catch (IOException e) {
-                e.printStackTrace();
+                throw new RuntimeException(e);
             }
         }
-        Tuple tuple = new Tuple(OPERATOR_TD);
+        Tuple tuple = new Tuple(getTupleDesc());
         tuple.setField(0, new IntField(deleted));
         return tuple;
     }

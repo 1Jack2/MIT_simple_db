@@ -20,10 +20,14 @@ public class Insert extends Operator {
 
     private static final long serialVersionUID = 1L;
 
+    /** The child operator from which to read tuples to be inserted. */
     private OpIterator child;
+    /** The table in which to insert tuples */
     private final int tableId;
+    /** The transaction running the insert */
     private final TransactionId tid;
-    private final TupleDesc operatorTD = new TupleDesc(new Type[]{Type.INT_TYPE});
+
+    private final TupleDesc OPERATOR_TD = new TupleDesc(new Type[]{Type.INT_TYPE});
     private final TupleDesc tableTD;
 
     // Should be used once
@@ -51,7 +55,7 @@ public class Insert extends Operator {
     }
 
     public TupleDesc getTupleDesc() {
-        return operatorTD;
+        return OPERATOR_TD;
     }
 
     public TupleDesc getTableTupleDesc() {
@@ -59,12 +63,14 @@ public class Insert extends Operator {
     }
 
     public void open() throws DbException, TransactionAbortedException {
-        super.open();
         child.open();
+        used = false;
+        super.open();
     }
 
     public void close() {
         super.close();
+        used = true;
         child.close();
     }
 

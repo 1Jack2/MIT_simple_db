@@ -6,10 +6,8 @@ import simpledb.common.Permissions;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
-import javax.xml.crypto.Data;
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -302,8 +300,8 @@ public class BufferPool {
             page = pages[slotId];
         }
         // flush page to disk
-        page.markDirty(false, null);
         Database.getCatalog().getDatabaseFile(pid.getTableId()).writePage(page);
+        page.markDirty(false, null);
     }
 
     /** Write all pages of the specified transaction to disk.

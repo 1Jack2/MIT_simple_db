@@ -9,9 +9,6 @@ import java.io.*;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Objects;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Each instance of HeapPage stores data for one page of HeapFiles and 
@@ -51,6 +48,8 @@ public class HeapPage implements Page {
      * @see BufferPool#getPageSize()
      */
     public HeapPage(HeapPageId id, byte[] data) throws IOException {
+        assert (id != null) : "HeapPage constructor: id cannot be null";
+
         this.pid = id;
         this.td = Database.getCatalog().getTupleDesc(id.getTableId());
         this.numSlots = getNumTuples();

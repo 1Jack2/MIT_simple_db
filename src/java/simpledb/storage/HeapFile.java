@@ -12,10 +12,7 @@ import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.*;
 
 /**
  * HeapFile is an implementation of a DbFile that stores a collection of tuples
@@ -29,6 +26,7 @@ import java.util.NoSuchElementException;
  */
 public class HeapFile implements DbFile {
 
+    /** the file that stores the on-disk backing store for this heap file */
     private final File file;
     private final TupleDesc td;
 
@@ -162,13 +160,11 @@ public class HeapFile implements DbFile {
     }
 
     // see DbFile.java for javadocs
-    public ArrayList<Page> deleteTuple(TransactionId tid, Tuple t) throws DbException,
+    public List<Page> deleteTuple(TransactionId tid, Tuple t) throws DbException,
             TransactionAbortedException {
         HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, t.getRecordId().getPageId(), Permissions.READ_WRITE);
         page.deleteTuple(t);
-        ArrayList<Page> mPageList = new ArrayList<>();
-        mPageList.add(page);
-        return mPageList;
+        return Collections.singletonList(page);
     }
 
     // see DbFile.java for javadocs
@@ -228,10 +224,6 @@ public class HeapFile implements DbFile {
 
         /**
          * Returns an iterator over a specified page of this HeapFile.
-         * @param pageNo
-         * @return
-         * @throws TransactionAbortedException
-         * @throws DbException
          */
         private Iterator<Tuple> iteratorPage(int pageNo) throws TransactionAbortedException, DbException {
             if (pageNo >= 0 && pageNo < heapFile.numPages()) {
