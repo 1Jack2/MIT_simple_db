@@ -41,15 +41,15 @@ public class IntHistogram {
      * @param v Value to add to the histogram
      */
     public void addValue(int v) {
-    	if (isIllegal(v)) {
+    	if (outOfRange(v)) {
             throw new IllegalArgumentException(String.format("%d is out of legal range [%d, %d]",
                     v, getMinValue(), getMaxValue()));
         }
-        IncreaseBucketHeight(v);
-        IncreaseTotalTuples();
+        incBucketHeight(v);
+        incTotalTuples();
     }
 
-    private boolean isIllegal(int v) {
+    private boolean outOfRange(int v) {
         return tooLarge(v) || tooSmall(v);
     }
 
@@ -91,7 +91,7 @@ public class IntHistogram {
     /**
      *
      * @param v Value to add to the histogram or to compare with
-     * @return The right border of the {@code v}'s corresponding bucket
+     * @return The left border of the {@code v}'s corresponding bucket
      */
     private int getLeftBorder(int v) {
         return getMinValue() + getBucketIndex(v) * getWidth();
@@ -108,7 +108,7 @@ public class IntHistogram {
     /**
      * @param v Value to add to the histogram or to compare with
      */
-    private void IncreaseBucketHeight(int v) {
+    private void incBucketHeight(int v) {
         setBucketHeight(v, getBucketHeight(v) + 1);
     }
 
@@ -126,12 +126,12 @@ public class IntHistogram {
         double result;
         switch (op) {
             case EQUALS:
-                if (isIllegal(v)) {
+                if (outOfRange(v)) {
                     return 0d;
                 }
                 // No break here
             case NOT_EQUALS:
-                if (isIllegal(v)) {
+                if (outOfRange(v)) {
                     return 1d;
                 }
 
@@ -157,12 +157,12 @@ public class IntHistogram {
                     return 0d;
                 }
 
-                int rightCnt = 0;
+                double rightCnt = 0d;
                 for (int i = getBucketIndex(v) + 1; i < getBuckets().length; i++) {
                     rightCnt += buckets[i];
                 }
-                result = ((double) rightCnt) / getTotalTuples()
-                        + getBucketHeight(v) * Math.max(0d, getRightBorder(v) - (v + 1)) / getWidth() / getTotalTuples();
+                result = (rightCnt + getBucketHeight(v) * Math.max(0d, getRightBorder(v) - (v + 1))) / getWidth()
+                        / getTotalTuples();
 
                 if (op == Predicate.Op.LESS_THAN_OR_EQ) {
                     result = 1 - result;
@@ -184,12 +184,12 @@ public class IntHistogram {
                     return 1d;
                 }
 
-                int leftCnt = 0;
+                double leftCnt = 0;
                 for (int i = getBucketIndex(v) - 1; i >= 0; i--) {
                     leftCnt += buckets[i];
                 }
-                result = ((double) leftCnt) / getTotalTuples()
-                        + getBucketHeight(v) * Math.max(0d, (v - 1) - getLeftBorder(v)) / getWidth() / getTotalTuples();
+                result = (leftCnt + getBucketHeight(v) * Math.max(0d, (v - 1) - getLeftBorder(v))) / getWidth()
+                        / getTotalTuples();
 
                 if (op == Predicate.Op.GREATER_THAN_OR_EQ) {
                     result = 1 - result;
@@ -239,7 +239,7 @@ public class IntHistogram {
         this.totalTuples = totalTuples;
     }
 
-    private void IncreaseTotalTuples() {
+    private void incTotalTuples() {
         setTotalTuples(getTotalTuples() + 1);
     }
 

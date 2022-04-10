@@ -1,14 +1,13 @@
 package simpledb.optimizer;
 
-import simpledb.common.Database;
 import simpledb.ParsingException;
+import simpledb.common.Database;
 import simpledb.execution.*;
-import simpledb.storage.TupleDesc;
-
-import java.util.*;
 
 import javax.swing.*;
-import javax.swing.tree.*;
+import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeCellRenderer;
+import java.util.*;
 
 /**
  * The JoinOptimizer class is responsible for ordering a series of joins
@@ -176,14 +175,14 @@ public class JoinOptimizer {
                                                    boolean t2pkey, Map<String, TableStats> stats,
                                                    Map<String, Integer> tableAliasToId) {
         int result;
-        double fraction = 0.3;
+        double FRACTION = 0.3;
         if (joinOp == Predicate.Op.EQUALS) {
             if (t1pkey && t2pkey) return Math.min(card1, card2);
             if (t1pkey) return card1;
             if (t2pkey) return card2;
             result = Math.max(card1, card2);
         } else {
-            result = (int) (card1 * card2 * fraction);
+            result = (int) (card1 * card2 * FRACTION);
         }
         return result;
     }

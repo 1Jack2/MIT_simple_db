@@ -66,10 +66,14 @@ public class TableStats {
      */
     static final int NUM_HIST_BINS = 100;
 
+    /** The total number of tuples in this table */
     private int totalTuples = 0;
-    private Object[] histograms;
-    private int ioCostPerPage;
-    private int tableId;
+    /** Every field of a TupleDesc has a corresponding histogram */
+    private final Object[] histograms;
+    /** The cost per page of IO */
+    private final int ioCostPerPage;
+    /** The table over which to compute statistics */
+    private final int tableId;
 
     /**
      * Create a new TableStats object, that keeps track of statistics on each
@@ -89,22 +93,22 @@ public class TableStats {
         // You should try to do this reasonably efficiently, but you don't
         // necessarily have to (for example) do everything
         // in a single scan of the table.
-        // some code goes here
         this.tableId = tableid;
         this.ioCostPerPage = ioCostPerPage;
         TupleDesc td = Database.getCatalog().getTupleDesc(tableid);
         histograms = new Object[td.getSize()];
 
         // Build min values and max values
-        Field[] mins = new Field[td.getTdItems().length];
-        Field[] maxs = new Field[td.getTdItems().length];
+        int len = td.numFields();
+        Field[] mins = new Field[len];
+        Field[] maxs = new Field[len];
         DbFileIterator iterator = Database.getCatalog().getDatabaseFile(tableid).iterator(null);
         try {
             iterator.open();
             while (iterator.hasNext()) {
                 totalTuples++;
                 Tuple tuple = iterator.next();
-                for (int i = 0; i < td.getTdItems().length; i++) {
+                for (int i = 0; i < len; i++) {
                     if (maxs[i] == null || tuple.getField(i).compare(Predicate.Op.GREATER_THAN, maxs[i])) {
                         maxs[i] = tuple.getField(i);
                     }
@@ -118,7 +122,7 @@ public class TableStats {
         }
 
         // Build histograms
-        for (int i = 0; i < td.getTdItems().length; i++) {
+        for (int i = 0; i < len; i++) {
             switch (td.getFieldType(i)) {
                 case INT_TYPE:
                     histograms[i] = new IntHistogram(NUM_HIST_BINS,
@@ -150,6 +154,7 @@ public class TableStats {
                     }
                 }
             }
+            iterator.close();
         } catch (DbException | TransactionAbortedException e) {
             e.printStackTrace();
         }
@@ -169,7 +174,7 @@ public class TableStats {
      * @return The estimated cost of scanning the table.
      */
     public double estimateScanCost() {
-        return getIoCostPerPage() * totalTuples() / BufferPool.getPageSize();
+        return ((double) getIoCostPerPage() * totalTuples()) / BufferPool.getPageSize();
     }
 
     /**
