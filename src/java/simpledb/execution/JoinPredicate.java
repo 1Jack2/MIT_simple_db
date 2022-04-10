@@ -13,9 +13,12 @@ public class JoinPredicate implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    private int field1;
-    private Predicate.Op op;
-    private int field2;
+    /** The field index into the first tuple in the predicate */
+    private final int field1;
+    /** The field index into the second tuple in the predicate */
+    private final int field2;
+    /** The operation to apply (as defined in Predicate.Op) */
+    private final Predicate.Op op;
 
     /**
      * Constructor -- create a new predicate over two fields of two tuples.
@@ -44,9 +47,8 @@ public class JoinPredicate implements Serializable {
      * @return true if the tuples satisfy the predicate.
      */
     public boolean filter(Tuple t1, Tuple t2) {
-        if (t1 == null || t2 == null) {
-            return false;
-        }
+        assert (t1 != null && t2 != null && t1.getTupleDesc().numFields() > field1 && t2.getTupleDesc().numFields() > field2)
+                : "Tuple is illegal";
         return t1.getField(field1).compare(op, t2.getField(field2));
     }
     

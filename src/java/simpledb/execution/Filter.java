@@ -14,7 +14,9 @@ public class Filter extends Operator {
 
     private static final long serialVersionUID = 1L;
 
-    private Predicate predicate;
+    /** The predicate to filter tuples with */
+    private final Predicate predicate;
+    /** The child operator */
     private OpIterator child;
 
     /**
@@ -41,8 +43,8 @@ public class Filter extends Operator {
 
     public void open() throws DbException, NoSuchElementException,
             TransactionAbortedException {
-        super.open();
         child.open();
+        super.open();
     }
 
     public void close() {
@@ -66,7 +68,6 @@ public class Filter extends Operator {
      */
     protected Tuple fetchNext() throws NoSuchElementException,
             TransactionAbortedException, DbException {
-        // TODO(JACK): why protected?
         while (child.hasNext()) {
             Tuple tuple = child.next();
             if (predicate.filter(tuple)) {
