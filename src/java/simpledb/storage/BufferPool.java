@@ -34,11 +34,13 @@ public class BufferPool {
     private final Page[] pages;
 
     /* LRU cache of pages. */
-    /** map pageId to page slotId */
-    private final Map<PageId, Integer> pageTable;
-    private final List<PageId> lruPids;
-    private final Set<Integer> availableSlots;
     private final Object metaLatch = new Object();
+    /** map pageId to page slotId */
+    private final Map<PageId, Integer> pid2sid;
+    /** FIFO queue of page IDs. */
+    private final Queue<PageId> pidQue;
+    /** available slots */
+    private final Set<Integer> availableSlots;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -48,8 +50,8 @@ public class BufferPool {
     public BufferPool(int numPages) {
         // some code goes here
         pages = new HeapPage[numPages];
-        pageTable = new HashMap<>();
-        lruPids = new LinkedList<>();
+        pid2sid = new HashMap<>();
+        pidQue = new LinkedList<>();
         availableSlots = new HashSet<>();
         for (int i = 0; i < numPages; i++) {
             availableSlots.add(i);
@@ -100,24 +102,24 @@ public class BufferPool {
             }
         }
         synchronized (metaLatch) {
-            if (pageTable.containsKey(pid)) {
-                // Move to head
-                lruPids.remove(pid);
-                lruPids.add(pid);
+            if (pid2sid.containsKey(pid)) {
+                // deque then enque
+                pidQue.remove(pid);
+                pidQue.add(pid);
 
                 return pages[pid2slotId(pid)];
             }
-            Integer next = getSlotIdAndUpdatePageTable(pid);
-            return pages[next] = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
+            Integer sid = getSlotAndUpdateMap(pid);
+            return pages[sid] = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
         }
     }
 
-    private Integer getSlotIdAndUpdatePageTable(PageId pid) throws DbException {
-        Integer next = getAvailableSlotId();
-        availableSlots.remove(next);
-        lruPids.add(pid);
-        pageTable.put(pid, next);
-        return next;
+    private Integer getSlotAndUpdateMap(PageId pid) throws DbException {
+        Integer sid = getAvailableSlotId();
+        availableSlots.remove(sid);
+        pidQue.add(pid);
+        pid2sid.put(pid, sid);
+        return sid;
     }
 
     /**
@@ -177,17 +179,12 @@ public class BufferPool {
                 flushPages(tid);
             } catch (IOException e) {
                 e.printStackTrace();
+                throw new RuntimeException("IOException during flush");
             }
         } else {
             restorePages(tid);
         }
-
-        // release all locks
-        for (PageId pageId : pageTable.keySet()) {
-            if (holdsLock(tid, pageId)) {
-                Database.getLockManager().unlock(tid, pageId);
-            }
-        }
+        Database.getLockManager().cleanTransaction(tid);
     }
 
     /**
@@ -210,14 +207,7 @@ public class BufferPool {
         DbFile dbFile = Database.getCatalog().getDatabaseFile(tableId);
         List<Page> mPages = dbFile.insertTuple(tid, t);
         synchronized (metaLatch) {
-            for (Page page : mPages) {
-                Integer slotId = pid2slotId(page.getId());
-                // Add new pages into buffer pool
-                if (slotId == null) {
-                    pages[getSlotIdAndUpdatePageTable(page.getId())] = page;
-                }
-                page.markDirty(true, tid);
-            }
+            markPageDirty(mPages, tid);
         }
     }
 
@@ -239,14 +229,18 @@ public class BufferPool {
         DbFile dbFile = Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId());
         List<Page> mPages = dbFile.deleteTuple(tid, t);
         synchronized (metaLatch) {
-            for (Page page : mPages) {
-                Integer slotId = pid2slotId(page.getId());
-                // Add new pages into buffer pool
-                if (slotId == null) {
-                    pages[getSlotIdAndUpdatePageTable(page.getId())] = page;
-                }
-                page.markDirty(true, tid);
+            markPageDirty(mPages, tid);
+        }
+    }
+
+    private void markPageDirty(List<Page> pages, TransactionId tid) throws DbException {
+        for (Page page : pages) {
+            Integer slotId = pid2slotId(page.getId());
+            // Add new pages into buffer pool
+            if (slotId == null) {
+                this.pages[getSlotAndUpdateMap(page.getId())] = page;
             }
+            page.markDirty(true, tid);
         }
     }
 
@@ -257,7 +251,7 @@ public class BufferPool {
      */
     public void flushAllPages() throws IOException {
         synchronized (metaLatch) {
-            for (PageId pageId : pageTable.keySet()) {
+            for (PageId pageId : pid2sid.keySet()) {
                 flushPage(pageId);
             }
         }
@@ -273,15 +267,15 @@ public class BufferPool {
     */
     public void discardPage(PageId pid) {
         synchronized (metaLatch) {
-            if (!pageTable.containsKey(pid)) {
+            if (!pid2sid.containsKey(pid)) {
                 // TODO(JACK ZHANG): 2021/11/1 Or we should do nothing?
                 throw new RuntimeException(String.format("Page{%s} is not in buffer pool", pid));
             }
-            Integer slotId = pid2slotId(pid);
+            Integer sid = pid2slotId(pid);
             // Remove from page table
-            pageTable.remove(pid);
+            pid2sid.remove(pid);
             // Add into available slotIds
-            availableSlots.add(slotId);
+            availableSlots.add(sid);
         }
     }
 
@@ -292,7 +286,7 @@ public class BufferPool {
     private void flushPage(PageId pid) throws IOException {
         Page page;
         synchronized (metaLatch) {
-            if (!pageTable.containsKey(pid)) {
+            if (!pid2sid.containsKey(pid)) {
                 // TODO(JACK ZHANG): 2021/11/1 Or we should do nothing?
                 throw new RuntimeException(String.format("Page{%s} is not in buffer pool", pid));
             }
@@ -304,11 +298,12 @@ public class BufferPool {
         page.markDirty(false, null);
     }
 
-    /** Write all pages of the specified transaction to disk.
+    /**
+     * Write all pages of the specified transaction to disk.
      */
     public void flushPages(TransactionId tid) throws IOException {
         synchronized (metaLatch) {
-            for (PageId pid : pageTable.keySet()) {
+            for (PageId pid : pid2sid.keySet()) {
                 if (Objects.equals(tid, pages[pid2slotId(pid)].isDirty())) {
                     flushPage(pid);
                 }
@@ -318,11 +313,11 @@ public class BufferPool {
 
 
     /**
-     * Write all pages of the specified transaction to disk.
+     * Restore page from disk.
      */
     public void restorePages(TransactionId tid) {
         synchronized (metaLatch) {
-            for (PageId pid : pageTable.keySet()) {
+            for (PageId pid : pid2sid.keySet()) {
                 if (Objects.equals(tid, pages[pid2slotId(pid)].isDirty())) {
                     Page pageFromDisk = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
                     pages[pid2slotId(pid)] = pageFromDisk;
@@ -337,7 +332,7 @@ public class BufferPool {
      * @return slot id
      */
     private Integer pid2slotId(PageId pid) {
-        return pageTable.get(pid);
+        return pid2sid.get(pid);
     }
 
     /**
@@ -347,7 +342,7 @@ public class BufferPool {
      */
     private void evictPage() throws DbException {
         PageId pid = null;
-        Iterator<PageId> iterator = lruPids.iterator();
+        Iterator<PageId> iterator = pidQue.iterator();
         while (iterator.hasNext()) {
             PageId next = iterator.next();
             Integer slotId = pid2slotId(next);
@@ -361,6 +356,7 @@ public class BufferPool {
             throw new DbException("No page to evict, all pages are dirty");
         }
         try {
+            // TODO: 4/11/22 no need in NO STEAL/FORCE policy ?
             flushPage(pid);
             discardPage(pid);
             Database.getLockManager().unlock(pid);
@@ -371,7 +367,7 @@ public class BufferPool {
 
     private Set<PageId> getPidsInTable() {
         synchronized (metaLatch) {
-            return pageTable.keySet();
+            return pid2sid.keySet();
         }
     }
 

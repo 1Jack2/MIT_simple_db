@@ -144,7 +144,15 @@ public class HeapFile implements DbFile {
         return mPageList;
     }
 
-    private void insertTupleToNewPage(Tuple t, ArrayList<Page> mPageList, HeapPageId pid) throws IOException, DbException {
+    /**
+     * Inserts a tuple into a new page.
+     *
+     * lab4 exercise2:
+     * Adding a new page to a HeapFile. When do you physically write the page to disk? Are there race conditions
+     * with other transactions (on other threads) that might need special attention at the HeapFile level,
+     * regardless of page-level locking?
+     */
+    private synchronized void insertTupleToNewPage(Tuple t, ArrayList<Page> mPageList, HeapPageId pid) throws IOException, DbException {
         // create a new page and append it to the physical file on disk
         HeapPage newPage = new HeapPage(new HeapPageId(pid.getTableId(), pid.getPageNumber() + 1),
                 new byte[BufferPool.getPageSize()]);
@@ -187,20 +195,35 @@ public class HeapFile implements DbFile {
         @Override
         public void open() throws DbException, TransactionAbortedException {
             pageNo = 0;
-            it = iteratorPage(pageNo);
+            it = pageIterator(pageNo);
         }
 
         @Override
         public boolean hasNext() throws DbException, TransactionAbortedException {
             if (it == null) return false;
             if (it.hasNext()) return true;
+            // no more tuples in current page, try next page
+            ++pageNo;
+            if (!(pageNo >= 0 && pageNo < heapFile.numPages())) return false;
 
             try {
-                it = iteratorPage(++pageNo);
-                return hasNext();
+                HeapPageId pid = new HeapPageId(heapFile.getId(), pageNo);
+                // Acquire page lock
+                HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
+                // Update iterator
+                it = page.iterator();
+                if (it.hasNext())
+                    return true;
+                // Release page lock.
+                // Although this apparently contradicts the rules of two-phase locking, it is ok because
+                // t did not use any data from the page, such that a concurrent transaction t' which updated p cannot
+                // possibly effect the answer or outcome of t.
+                Database.getBufferPool().unsafeReleasePage(tid, page.getId());
             } catch (DbException e) {
-                return false;
+                System.out.println(e.getMessage());
             }
+
+            return false;
         }
 
         @Override
@@ -225,14 +248,10 @@ public class HeapFile implements DbFile {
         /**
          * Returns an iterator over a specified page of this HeapFile.
          */
-        private Iterator<Tuple> iteratorPage(int pageNo) throws TransactionAbortedException, DbException {
-            if (pageNo >= 0 && pageNo < heapFile.numPages()) {
-                HeapPageId pid = new HeapPageId(heapFile.getId(), pageNo);
-                HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
-                return page.iterator();
-            } else {
-                throw new DbException(String.format("heapfile %d does not contain page %d!", pageNo, heapFile.getId()));
-            }
+        private Iterator<Tuple> pageIterator(int pageNo) throws TransactionAbortedException, DbException {
+            HeapPageId pid = new HeapPageId(heapFile.getId(), pageNo);
+            HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
+            return page.iterator();
         }
     }
 }
