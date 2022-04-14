@@ -1,11 +1,11 @@
 package simpledb.execution;
 
-import simpledb.transaction.TransactionAbortedException;
 import simpledb.common.DbException;
 import simpledb.storage.Tuple;
 import simpledb.storage.TupleDesc;
+import simpledb.transaction.TransactionAbortedException;
 
-import java.util.*;
+import java.util.NoSuchElementException;
 
 /**
  * The Join operator implements the relational join operation.
@@ -113,6 +113,7 @@ public class Join extends Operator {
      * @see JoinPredicate#filter
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
+        // initialize tuple1
         if (tuple1 == null && child1.hasNext()) {
             tuple1 = child1.next();
         }
@@ -121,8 +122,14 @@ public class Join extends Operator {
                 tuple2 = child2.next();
             } else if (child1.hasNext()) {
                 tuple1 = child1.next();
+                // rewind child2 for every tuple in child1
                 child2.rewind();
-            } else {
+                if (child2.hasNext()) {
+                    tuple2 = child2.next();
+                } else { // child2 has no tuple
+                    return null;
+                }
+            } else { // child1 and child2 finish iterating
                 return null;
             }
         } while (!joinPredicate.filter(tuple1, tuple2));
