@@ -48,8 +48,7 @@ public class BufferPool {
      * @param numPages maximum number of pages in this buffer pool.
      */
     public BufferPool(int numPages) {
-        // some code goes here
-        pages = new HeapPage[numPages];
+        pages = new Page[numPages];
         pid2sid = new HashMap<>();
         pidQue = new LinkedList<>();
         availableSlots = new HashSet<>();
