@@ -144,5 +144,7 @@ public abstract class BTreePage implements Page {
 	 */
 	public abstract boolean isSlotUsed(int i);
 
+	public abstract void moveHalfTo(BTreePage other) throws DbException;
+
 }
 

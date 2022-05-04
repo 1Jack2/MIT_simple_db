@@ -258,8 +258,31 @@ public class BTreeFile implements DbFile {
 		// the new entry.  getParentWithEmtpySlots() will be useful here.  Don't forget to update
 		// the sibling pointers of all the affected leaf pages.  Return the page into which a 
 		// tuple with the given key field should be inserted.
-        return null;
-		
+		if (page.getNumEmptySlots() != 0)
+			throw new AssertionError("Leaf page should have no empty slots When splitting");
+		BTreeLeafPage newLeafPage = (BTreeLeafPage) getEmptyPage(tid, dirtypages, BTreePageId.LEAF);
+		// Move half of the entry to the new page
+		page.moveHalfTo(newLeafPage);
+		// Copy up the key
+		Field newLeafLeftMostField = newLeafPage.iterator().next().getField(keyField);
+		BTreeInternalPage parentWithEmptySlots = getParentWithEmptySlots(tid, dirtypages, page.getParentId(), newLeafLeftMostField);
+		parentWithEmptySlots.insertEntry(new BTreeEntry(newLeafLeftMostField, page.getId(), newLeafPage.getId()));
+		// Update parent pointers
+		updateParentPointers(tid, dirtypages, parentWithEmptySlots);
+		// update sibling pointers
+		if (page.getRightSiblingId() != null) {
+			((BTreeLeafPage) getPage(tid, dirtypages, page.getRightSiblingId(), Permissions.READ_WRITE))
+					.setLeftSiblingId(newLeafPage.getId());
+		}
+		newLeafPage.setRightSiblingId(page.getRightSiblingId());
+		newLeafPage.setLeftSiblingId(page.getId());
+		page.setRightSiblingId(newLeafPage.getId());
+
+		if (field.compare(Op.GREATER_THAN_OR_EQ, newLeafLeftMostField)) {
+			return newLeafPage;
+		} else {
+			return page;
+		}
 	}
 	
 	/**
@@ -296,7 +319,25 @@ public class BTreeFile implements DbFile {
 		// the parent pointers of all the children moving to the new page.  updateParentPointers()
 		// will be useful here.  Return the page into which an entry with the given key field
 		// should be inserted.
-		return null;
+		if (page.getNumEmptySlots() != 0)
+			throw new AssertionError("INTERNAL page should have no empty slots When splitting");
+		BTreeInternalPage newInternalPage = (BTreeInternalPage) getEmptyPage(tid, dirtypages, BTreePageId.INTERNAL);
+		// copy half of the entry to the new page
+		page.moveHalfTo(newInternalPage);
+		// Push up the middle key: Insert into parent page, then delete from the right page
+		Field newInternalLeftMostFiled = newInternalPage.iterator().next().getKey();
+		BTreeInternalPage parentWithEmptySlots = getParentWithEmptySlots(tid, dirtypages, page.getParentId(), newInternalLeftMostFiled);
+		parentWithEmptySlots.insertEntry(new BTreeEntry(newInternalLeftMostFiled, page.getId(), newInternalPage.getId()));
+		newInternalPage.deleteKeyAndLeftChild(newInternalPage.iterator().next());
+		// Update parent pointers
+		updateParentPointers(tid, dirtypages, parentWithEmptySlots);
+		updateParentPointers(tid, dirtypages, newInternalPage);
+
+		if (field.compare(Op.GREATER_THAN_OR_EQ, newInternalLeftMostFiled)) {
+			return newInternalPage;
+		} else {
+			return page;
+		}
 	}
 	
 	/**

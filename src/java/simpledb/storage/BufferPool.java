@@ -268,13 +268,15 @@ public class BufferPool {
         synchronized (metaLatch) {
             if (!pid2sid.containsKey(pid)) {
                 // TODO(JACK ZHANG): 2021/11/1 Or we should do nothing?
-                throw new RuntimeException(String.format("Page{%s} is not in buffer pool", pid));
+//                throw new RuntimeException(String.format("Page{%s} is not in buffer pool", pid));
+                System.out.printf("Page%s is not in buffer pool%n", pid);
+            } else {
+                Integer sid = pid2slotId(pid);
+                // Remove from page table
+                pid2sid.remove(pid);
+                // Add into available slotIds
+                availableSlots.add(sid);
             }
-            Integer sid = pid2slotId(pid);
-            // Remove from page table
-            pid2sid.remove(pid);
-            // Add into available slotIds
-            availableSlots.add(sid);
         }
     }
 

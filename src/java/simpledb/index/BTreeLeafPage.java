@@ -1,15 +1,12 @@
 package simpledb.index;
 
-import simpledb.common.Catalog;
-import simpledb.common.Database;
-import simpledb.common.DbException;
-import simpledb.common.Debug;
-import simpledb.common.Type;
+import simpledb.common.*;
 import simpledb.execution.Predicate;
 import simpledb.storage.*;
 
-import java.util.*;
 import java.io.*;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 
 /**
  * Each instance of BTreeLeafPage stores data for one page of a BTreeFile and 
@@ -516,6 +513,19 @@ public class BTreeLeafPage extends BTreePage {
 
 		} catch (ArrayIndexOutOfBoundsException e) {
 			throw new NoSuchElementException();
+		}
+	}
+
+	public void moveHalfTo(BTreePage other) throws DbException {
+		BTreeLeafPage otherLeafPage = (BTreeLeafPage) other;
+		int NumToMoveTuple = (getNumTuples() + 1) / 2;
+		Iterator<Tuple> rit = reverseIterator();
+		while (NumToMoveTuple > 0) {
+			NumToMoveTuple--;
+			// This method updates rid
+			Tuple tupleToMove = rit.next();
+			deleteTuple(tupleToMove);
+			otherLeafPage.insertTuple(tupleToMove);
 		}
 	}
 }
