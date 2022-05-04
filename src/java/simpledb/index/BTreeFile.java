@@ -193,21 +193,21 @@ public class BTreeFile implements DbFile {
 		}
 		BTreeInternalPage internalPage = (BTreeInternalPage) page;
 		Iterator<BTreeEntry> it = internalPage.iterator();
-		assert it.hasNext() : "Internal page has no entries";
+		if (!it.hasNext()) throw new AssertionError("Internal page has no entries");
 		// If f is null, it finds the left-most leaf page -- used for the iterator
 		if (f == null) {
 			BTreePageId leftMostChildPid = it.next().getLeftChild();
-			return findLeafPage(tid, dirtypages, leftMostChildPid, Permissions.READ_ONLY, f);
+			return findLeafPage(tid, dirtypages, leftMostChildPid, perm, f);
 		}
 
 		BTreeEntry entry = null;
 		while (it.hasNext()) {
 			entry = it.next();
 			if (entry.getKey().compare(Op.GREATER_THAN_OR_EQ, f)) {
-				return findLeafPage(tid, dirtypages, entry.getLeftChild(), Permissions.READ_ONLY, f);
+				return findLeafPage(tid, dirtypages, entry.getLeftChild(), perm, f);
 			}
 		}
-		return findLeafPage(tid, dirtypages, entry.getRightChild(), Permissions.READ_ONLY, f);
+		return findLeafPage(tid, dirtypages, entry.getRightChild(), perm, f);
 	}
 	
 	/**
