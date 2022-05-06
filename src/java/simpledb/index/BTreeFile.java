@@ -278,7 +278,7 @@ public class BTreeFile implements DbFile {
 		newLeafPage.setLeftSiblingId(page.getId());
 		page.setRightSiblingId(newLeafPage.getId());
 
-		if (field.compare(Op.GREATER_THAN_OR_EQ, newLeafLeftMostField)) {
+		if (field.compare(Op.GREATER_THAN, newLeafLeftMostField)) {
 			return newLeafPage;
 		} else {
 			return page;
@@ -333,7 +333,9 @@ public class BTreeFile implements DbFile {
 		updateParentPointers(tid, dirtypages, parentWithEmptySlots);
 		updateParentPointers(tid, dirtypages, newInternalPage);
 
-		if (field.compare(Op.GREATER_THAN_OR_EQ, newInternalLeftMostFiled)) {
+		// newInternalPage's first entry is deleted.
+		// if child insert to newInternalPage, may not find corresponding position
+		if (field.compare(Op.GREATER_THAN, newInternalLeftMostFiled)) {
 			return newInternalPage;
 		} else {
 			return page;
