@@ -670,7 +670,7 @@ public class BTreeInternalPage extends BTreePage {
 	}
 
 	@Override
-	public void moveHalfTo(BTreePage other) throws DbException {
+	public void moveHalfFromTailToOtherHead(BTreePage other) throws DbException {
 		BTreeInternalPage otherInternalPage = (BTreeInternalPage) other;
 		int NumToMoveEntry = (getNumEntries() + 1) / 2;
 		Iterator<BTreeEntry> rit = reverseIterator();
@@ -681,6 +681,65 @@ public class BTreeInternalPage extends BTreePage {
 			deleteKeyAndRightChild(entryToMove);
 			otherInternalPage.insertEntry(entryToMove);
 		}
+	}
+
+	@Override
+	public void moveAllFromHeadToOtherTail(BTreePage other) throws DbException {
+		int numToMoveEntry = getNumEntries();
+		BTreeInternalPage otherInternalPage = (BTreeInternalPage) other;
+		Iterator<BTreeEntry> rit = iterator();
+		while (numToMoveEntry > 0) {
+			numToMoveEntry--;
+			// This method updates rid
+			BTreeEntry entryToMove = rit.next();
+			deleteKeyAndRightChild(entryToMove);
+			otherInternalPage.insertEntry(entryToMove);
+		}
+	}
+
+	public Field redistributeWith(BTreeInternalPage siblingPage, boolean isRightSibing, BTreeEntry entryPullDown) throws DbException {
+		int toMove;
+		Iterator<BTreeEntry> it;
+		// Left size should be greater than right size after redistribution
+		if (isRightSibing) {
+			int half = getNumEntries() + (siblingPage.getNumEntries() - getNumEntries()) / 2; // flooring
+			toMove = siblingPage.getNumEntries() - half; // ceiling
+			it = siblingPage.iterator();
+		} else {
+			int half = getNumEntries() + (siblingPage.getNumEntries() - getNumEntries() + 1) / 2; // ceiling
+			toMove = siblingPage.getNumEntries() - half; // flooring
+			it = siblingPage.reverseIterator();
+		}
+		// Pull down key from parent to me(sibling may have no space)
+		insertEntry(entryPullDown);
+		// Do redistribution
+		for (int i = 0; i < toMove; i++) {
+			BTreeEntry entryToMove = it.next();
+			if (isRightSibing) {
+				siblingPage.deleteKeyAndLeftChild(entryToMove);
+			} else {
+				siblingPage.deleteKeyAndRightChild(entryToMove);
+			}
+			insertEntry(entryToMove);
+		}
+		// Push up key from the left page
+		Field keyToPushUp;
+		if (isRightSibing) {
+			keyToPushUp = getLastEntry().getKey();
+			deleteKeyAndRightChild(getLastEntry());
+		} else {
+			keyToPushUp = siblingPage.getLastEntry().getKey();
+			siblingPage.deleteKeyAndRightChild(siblingPage.getLastEntry());
+		}
+		return keyToPushUp;
+	}
+
+	public BTreeEntry getFirstEntry() {
+		return iterator().next();
+	}
+
+	public BTreeEntry getLastEntry() {
+		return reverseIterator().next();
 	}
 }
 

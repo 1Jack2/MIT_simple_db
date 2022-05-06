@@ -516,7 +516,7 @@ public class BTreeLeafPage extends BTreePage {
 		}
 	}
 
-	public void moveHalfTo(BTreePage other) throws DbException {
+	public void moveHalfFromTailToOtherHead(BTreePage other) throws DbException {
 		BTreeLeafPage otherLeafPage = (BTreeLeafPage) other;
 		int NumToMoveTuple = (getNumTuples() + 1) / 2;
 		Iterator<Tuple> rit = reverseIterator();
@@ -526,6 +526,31 @@ public class BTreeLeafPage extends BTreePage {
 			Tuple tupleToMove = rit.next();
 			deleteTuple(tupleToMove);
 			otherLeafPage.insertTuple(tupleToMove);
+		}
+	}
+
+	@Override
+	public void moveAllFromHeadToOtherTail(BTreePage other) throws DbException {
+		int numToMoveTuple = getNumTuples();
+		BTreeLeafPage otherLeafPage = (BTreeLeafPage) other;
+		Iterator<Tuple> rit = iterator();
+		while (numToMoveTuple > 0) {
+			numToMoveTuple--;
+			// This method updates rid
+			Tuple tupleToMove = rit.next();
+			deleteTuple(tupleToMove);
+			otherLeafPage.insertTuple(tupleToMove);
+		}
+	}
+
+	public void redistributeWith(BTreeLeafPage siblingPage, boolean isRightSibing) throws DbException {
+		int half = getNumTuples() + (siblingPage.getNumTuples() - getNumTuples()) / 2;
+		int toMove = siblingPage.getNumTuples() - half;
+		Iterator<Tuple> it = isRightSibing ? siblingPage.iterator() : siblingPage.reverseIterator();
+		for (int i = 0; i < toMove; i++) {
+			Tuple tupleToMove = it.next();
+			siblingPage.deleteTuple(tupleToMove);
+			insertTuple(tupleToMove);
 		}
 	}
 }
